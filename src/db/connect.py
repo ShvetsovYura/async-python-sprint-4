@@ -14,24 +14,11 @@ class CharType(Enum):
     i = 'i'
     ii = 'ii'
     ihihih = 'ihihih'
-    h = 'h'
+    h = 'h'    # noqa VNE001
     ih = 'ih'
     ci = 'ci'
     cccc = 'cccc'
     bh = 'bh'
-
-
-def pack_c_structure(type_marker: str, repeat: int = 0) -> tuple[Callable, Callable]:
-    # https://www.bestprog.net/ru/2020/05/08/python-module-struct-packing-unpacking-data-basic-methods-ru/#q03
-
-    repeat_symbol = 0
-
-    if repeat:
-        repeat_symbol = (repeat - 1)
-
-    markers = type_marker + (type_marker * repeat_symbol)
-    c_struct = Struct(f'!{markers}')
-    return c_struct.pack, c_struct.unpack_from
 
 
 class InterfaceError(Exception):
@@ -94,7 +81,7 @@ class DbConnect:
     async def connect(self):
         self._reader, self._writer = await self._create_connection()
         await self._prepare_auth()
-        packer_ = CPack('ci')
+        packer_ = CPack(CharType.ci)
 
         code_ = None
 

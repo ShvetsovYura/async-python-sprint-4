@@ -8,7 +8,7 @@ from struct import Struct
 from typing import Callable, Optional, Union
 
 import db.db_messages as dbm
-from db.pg_converters import PG_TYPES, string_in
+from db.pg_converters import PG_TYPES, python_types_convert_to_pg_params, string_in
 from db.query_context import QueryContext
 
 logger = logging.getLogger(__name__)
@@ -95,6 +95,10 @@ class DbConnect:
             dbm.ROW_DESCRIPTION: self._handle_ROW_DESCRIPTION,
             dbm.DATA_ROW: self._handle_DATA_ROW,
             dbm.COMMAND_COMPLETE: self._handle_command_COMPLITE,
+            dbm.PARSE_COMPLETE: self._handle_PARSE_COMPLETE,
+            dbm.BIND_COMPLETE: self._handle_BIND_COMPLETE,
+            dbm.PARAMETER_DESCRIPTION: self._handle_PARAMETER_DESCRIPTION,
+            dbm.NO_DATA: self._handle_NO_DATA,
         }
 
         self._authenticate_handlers = {
@@ -109,12 +113,53 @@ class DbConnect:
         await self._prepare_auth()
         await self.__run_while_not_command_in((dbm.CONNECTION_READY, dbm.ERROR_RESPONSE))
 
-    async def run_query(self, stmt: str):
+    async def run_query(self, stmt: str, *params):
+        if len(params) == 0:
+            query_context = await self.run_simple_query(stmt)
+            return query_context
+        else:
+            params_ = params
+            query_context = await self.run_query_with_params(stmt, params_)
+            return query_context
+
+    async def run_simple_query(self, stmt: str):
         """ Запуск на выполнение SQL-запроса """
         query_context: QueryContext = QueryContext(stmt)
         self._send_command_QUERY(stmt)
         await self._writer.drain()
         await self._handle_query_result_messages(query_context=query_context)
+
+        return query_context
+
+    async def run_query_with_params(self, stmt: str, vals: tuple = (), oids: tuple = ()):
+        packer = CPack(CharType.i)
+        query_context = QueryContext(stmt)
+
+        self._send_command_PARSE(NULL_BYTE, stmt, oids)
+        self._writer.write(dbm.SYNC + packer.pack(len(b'') + 4) + b'')
+        await self._writer.drain()
+
+        await self.__run_while_not_command_in((dbm.CONNECTION_READY, ),
+                                              query_context=query_context)
+
+        self._send_command_DESCRIBE_STATEMENT(NULL_BYTE)
+
+        self._writer.write(dbm.SYNC + packer.pack(len(b'') + 4) + b'')
+
+        await self._writer.drain()
+
+        params = python_types_convert_to_pg_params(vals)
+
+        self._send_command_BIND(NULL_BYTE, params)
+        await self.__run_while_not_command_in((dbm.CONNECTION_READY, ),
+                                              query_context=query_context)
+
+        self._send_command_EXECUTE()
+
+        self._writer.write(dbm.SYNC + packer.pack(len(b'') + 4) + b'')
+        await self._writer.drain()
+        await self.__run_while_not_command_in((dbm.CONNECTION_READY, ),
+                                              query_context=query_context)
 
         return query_context
 
@@ -325,6 +370,66 @@ class DbConnect:
                 query_context.rows_count += rows_count
         except ValueError:
             pass
+
+    def _send_command_PARSE(self, statement_name_bin, statement, oids=()):
+        packer_i = CPack(CharType.i)
+        packer_h = CPack(CharType.h)
+
+        value = bytearray(statement_name_bin)
+        value.extend(statement.encode(self._client_encoding) + NULL_BYTE)
+        value.extend(packer_h.pack(len(oids)))
+        for oid in oids:
+            value.extend(packer_i.pack(0 if oid == -1 else oid))
+
+        self._write_message(dbm.PARSE, value)
+        self._writer.write(dbm.FLUSH + packer_i.pack(len(b'') + 4) + b'')
+
+    def _send_command_BIND(self, stmt_name: bytes, params: tuple):
+
+        packer_h = CPack(CharType.h)
+        packer_i = CPack(CharType.i)
+        """ https://www.postgresql.org/docs/current/protocol-message-formats.html """
+        retval = bytearray(NULL_BYTE + stmt_name + packer_h.pack(0) + packer_h.pack(len(params)))
+
+        for param in params:
+            if param is None:
+                retval.extend(packer_i.pack(-1))
+            else:
+                param = param.encode(self._client_encoding)
+                retval.extend(packer_i.pack(len(param)))
+                retval.extend(param)
+
+        retval.extend(packer_h.pack(0))
+
+        self._write_message(dbm.BIND, retval)
+        self._writer.write(dbm.FLUSH + packer_i.pack(len(b'') + 4) + b'')
+
+    async def _handle_PARSE_COMPLETE(self, data, **kwarg):
+        pass
+
+    def _send_command_DESCRIBE_STATEMENT(self, stmt_name: bytes):
+        packer_i = CPack(CharType.i)
+
+        self._write_message(dbm.DESCRIBE, dbm.STATEMENT + stmt_name)
+        self._writer.write(dbm.FLUSH + packer_i.pack(len(b'') + 4) + b'')
+
+    def _send_command_EXECUTE(self):
+        """https://www.postgresql.org/docs/current/protocol-message-formats.html"""
+
+        packer_i = CPack(CharType.i)
+
+        data_ = packer_i.pack(len(NULL_BYTE + packer_i.pack(0)) + 4)
+        self._writer.write(dbm.EXECUTE + data_ + NULL_BYTE + packer_i.pack(0))
+        self._writer.write(dbm.FLUSH + packer_i.pack(len(b'') + 4) + b'')
+
+    async def _handle_PARAMETER_DESCRIPTION(self, data, **kwarg):
+        pass
+
+    async def _handle_BIND_COMPLETE(self, data, **kwarg):
+        pass
+
+    async def _handle_NO_DATA(self, *args, **kwargs):
+        pass
 
     async def __aenter__(self):
         await asyncio.sleep(0)

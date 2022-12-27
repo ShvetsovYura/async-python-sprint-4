@@ -3,6 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from ipaddress import ip_address, ip_network
 from json import dumps, loads
+from typing import Callable
 from uuid import UUID
 
 from dateutil.parser import parse
@@ -221,3 +222,25 @@ PG_TYPES = {
     pt.VARCHAR: string_in,    # varchar
     pt.XID: int,    # xid
 }
+
+
+def make_param(value):    # noqa CCF001
+    py_types = dict(PY_TYPES)
+
+    try:
+        converter: Callable = py_types[type(value)]
+    except KeyError:
+        converter: Callable = str
+        for key_, value_ in py_types.items():
+            try:
+                if isinstance(value, key_):
+                    converter: Callable = value_
+                    break
+            except TypeError:
+                pass
+
+    return converter(value)
+
+
+def python_types_convert_to_pg_params(values: tuple):
+    return tuple([make_param(value) for value in values])

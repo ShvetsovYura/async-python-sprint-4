@@ -25,8 +25,11 @@ async def main():
                     application_name='hoho')
 
     await con.connect()
-    await con.run_query(f"""insert into links.data(data, dt) values('meme1',
-        {datetime.now(tz=timezone(timedelta(hours=3)))})""")
+    await con.run_query("START TRANSACTION")    # noqa Q0000
+    await con.run_query("insert into links.data(data, dt) values('meme1', $1)",
+                        datetime.now(tz=timezone(timedelta(hours=3))))
+    await con.run_query("COMMIT")    # noqa Q0000
+    # await con.run_query("ROLLBACK")
 
     await con.run_query('select * from links.data ')
 

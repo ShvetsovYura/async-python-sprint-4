@@ -1,0 +1,9 @@
+webapi:
+  port: 8080
+  prefix: "/api/v1"
+  access_token: "u6aLMlPptiG642402r8qUesj4MSVABUcRmTZG7Nx3vlK3O5QbByxc9hp30"
+  cors:
+    credentials: true
+    methods: ["GET", "POST", "OPTIONS"]
+    origins: ["*"]
+    headers: ["*"]

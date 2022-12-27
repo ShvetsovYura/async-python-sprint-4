@@ -1,11 +1,17 @@
 import asyncio
+import logging
 from asyncio.streams import StreamReader, StreamWriter
+from collections import defaultdict
 from enum import Enum
 from hashlib import md5
 from struct import Struct
 from typing import Callable, Optional, Union
 
 import db.db_messages as dbm
+from db.pg_converters import PG_TYPES, string_in
+from db.query_context import QueryContext
+
+logger = logging.getLogger(__name__)
 
 NULL_BYTE = b'\x00'
 
@@ -32,7 +38,7 @@ class CPack:
 
         # https://www.bestprog.net/ru/2020/05/08/python-module-struct-packing-unpacking-data-basic-methods-ru/#q03
 
-        self._c_struct: Struct = Struct(f'!{type_marker}')
+        self._c_struct: Struct = Struct(f'!{type_marker.value}')
 
     def pack(self, data) -> bytes:
         return self._c_struct.pack(data)
@@ -44,8 +50,8 @@ class CPack:
 
 
 class DbConnect:
-
-    def __init__(
+    # https://www.postgresql.org/docs/current/protocol-message-formats.html
+    def __init__(    # noqa: CFQ002
         self,
         host: str,
         port: int,
@@ -55,6 +61,8 @@ class DbConnect:
         application_name=None,
         replication=None,
     ) -> None:
+        """ Инициализация подключения к БД (без непосредственного подключения) """
+
         self._client_encoding = 'utf8'
         self._host = host
         self._port = port
@@ -62,7 +70,14 @@ class DbConnect:
         self._user = user
         self._password = password
 
+        self._query_context = QueryContext(None)
+
+        self._postgres_types = defaultdict(lambda: string_in, PG_TYPES)
+
         self._encoded_password = self._encode_password(password)
+
+        self._transaction_status = None
+
         self._encoded_init_params = self._encode_init_params({
             'user': user,
             'database': db_name,
@@ -76,50 +91,81 @@ class DbConnect:
             dbm.AUTHENTICATION_REQUEST: self._handle_AUTHENTICATION_REQUEST,
             dbm.PARAMETER_STATUS: self._handle_PARAMETER_STATUS,
             dbm.BACKEND_KEY_DATA: self._handle_BACKEND_KEY_DATA,
+            dbm.CONNECTION_READY: self._handle_CONNECTION_READY,
+            dbm.ROW_DESCRIPTION: self._handle_ROW_DESCRIPTION,
+            dbm.DATA_ROW: self._handle_DATA_ROW,
+            dbm.COMMAND_COMPLETE: self._handle_command_COMPLITE,
+        }
+
+        self._authenticate_handlers = {
+            0: self._authenticate_nope,
+            3: self._authenticate_by_plain_password,    # обработчик просто по-паролю
+            5: self._authenticate_by_md5_password,    # обработчик по паролю (пароль+логин)
         }
 
     async def connect(self):
+        """ Подключение к БД """
         self._reader, self._writer = await self._create_connection()
         await self._prepare_auth()
-        packer_ = CPack(CharType.ci)
+        await self.__run_while_not_command_in((dbm.CONNECTION_READY, dbm.ERROR_RESPONSE))
 
-        code_ = None
+    async def run_query(self, stmt: str):
+        """ Запуск на выполнение SQL-запроса """
+        query_context: QueryContext = QueryContext(stmt)
+        self._send_command_QUERY(stmt)
+        await self._writer.drain()
+        await self._handle_query_result_messages(query_context=query_context)
 
-        while code_ not in (b'Z', b'E'):
-            code_, data_len_ = packer_.unpack(await self._reader.read(5))
-            print(f'code: {code_}, data_len:{data_len_} ')
-            cmd_ = await self._reader.read(data_len_ - 4)
-            print(f"rd:{cmd_}")
-            await self._message_handlers[code_](cmd_)
+        return query_context
+
+    async def close(self):
+        """ Закртыие TCP-соединения с БД """
+        self._writer.close()
+        await self._writer.wait_closed()
 
     async def _create_connection(self) -> tuple[StreamReader, StreamWriter]:
         reader, writer = await asyncio.open_connection(self._host, self._port)
 
         return reader, writer
 
+    async def __run_while_not_command_in(self, quit_commands: tuple, **kwarg):
+        """ Выполняет комманды, пока не встретит указанные в агргументах """
+
+        packer_ = CPack(CharType.ci)
+
+        code_ = None
+        while code_ not in quit_commands:    # крутим, пока не получим статус ГОТОВ или ОШИБКА
+
+            code_, data_len_ = packer_.unpack(await self._reader.read(5))
+            logger.debug(f'code: {code_}, data_len:{data_len_} ')
+
+            payload_ = await self._reader.read(data_len_ - 4)
+            logger.debug(f'payload:{payload_}')
+
+            await self._message_handlers[code_](payload_, **kwarg)
+
     async def _prepare_auth(self):
         protocol = 196608
-        packer_ = CPack('i')
+        packer_ = CPack(CharType.i)
         packed_val = packer_.pack(protocol)
 
-        val = bytearray(packed_val)
+        reauest_data = bytearray(packed_val)
 
         for key_, value_ in self._encoded_init_params.items():
-            val.extend(key_.encode('ascii') + NULL_BYTE + value_ + NULL_BYTE)
+            reauest_data.extend(key_.encode('ascii') + NULL_BYTE + value_ + NULL_BYTE)
 
-        val.append(0)
-        self._writer.write(packer_.pack(len(val) + 4))
-        self._writer.write(val)
+        reauest_data.append(0)
+        self._writer.write(packer_.pack(len(reauest_data) + 4))
+        self._writer.write(reauest_data)
         await self._writer.drain()
 
-    async def _close(self):
-        self._writer.close()
-        await self._writer.wait_closed()
-
     def _encode_password(self, password: Union[str, bytes]):
+        """ Кодировка пароля в UTF-8 если пароль еще не кодирован """
         return password.encode('utf8') if isinstance(password, str) else password
 
     def _encode_init_params(self, init_params: dict[str, Union[str, None]]):
+        """ кодировка значений по-умолчанию в UTF-8 """
+
         encoded_init_params: dict[str, bytes] = {}
 
         for key_, value_ in tuple(init_params.items()):
@@ -129,9 +175,11 @@ class DbConnect:
         return encoded_init_params
 
     def _write_message(self, type_: bytes, data: bytes):
+        """ Запись бинарных данных в сокет (без отправки) """
+
         try:
             self._writer.write(type_)
-            packed_data_ = CPack('i').pack(len(data) + 4)
+            packed_data_ = CPack(CharType.i).pack(len(data) + 4)
             self._writer.write(packed_data_)
             self._writer.write(data)
         except ValueError as e:
@@ -142,40 +190,145 @@ class DbConnect:
         except AttributeError:
             raise InterfaceError('connection is closed')
 
+    async def _authenticate_nope(self, data):
+        pass
+
+    async def _authenticate_by_md5_password(self, data):
+        """ Аутентификация по шифрованому паролю методом md5 + соль """
+
+        unpacked_data = CPack(CharType.cccc).unpack(data, 4)
+
+        salt = b''.join(unpacked_data)
+
+        if self._password is None:
+            raise InterfaceError('сервер требует MD5 аутентификацию пароля, но пароля нет, бро ')
+
+        user_password = self._encoded_password + self._encoded_user
+        md5_user_password = md5(user_password).hexdigest().encode('ascii')
+
+        pwd = b'md5' + md5(md5_user_password + salt).hexdigest().encode('ascii')
+
+        self._write_message(dbm.PASSWORD, pwd + NULL_BYTE)
+        await self._writer.drain()
+
+    async def _authenticate_by_plain_password(self):
+        """ Аутентификация по паролю в открытом текстовом виде """
+
+        if self._password is None:
+            raise InterfaceError('Тербуется пароль, но отсутствует')
+
+        self._write_message(dbm.PASSWORD, self._encoded_password + NULL_BYTE)
+        await self._writer.drain()
+
     async def _handle_AUTHENTICATION_REQUEST(self, data):
+        """ Обработка запросов на аутентификацию """
 
         # получение из ответа сервера ожидаеммый тип аутентификации
-        auth_type: int = CPack('i').unpack(data)[0]
-        print(f'auth_code: {auth_type}')
-        if auth_type == 0:
-            pass
-        elif auth_type == 3:
+        auth_type: int = CPack(CharType.i).unpack(data)[0]
+        logger.debug(f'auth_code: {auth_type}')
 
-            if self._password is None:
-                raise InterfaceError('Тербуется пароль, но отсутствует')
-
-            self._write_message(dbm.PASSWORD, self._encoded_password + NULL_BYTE)
-            await self._writer.drain()
-
-        elif auth_type == 5:
-
-            unpacked_data = CPack('c', 4).unpack(data, 4)
-
-            salt = b''.join(unpacked_data)
-
-            if self._password is None:
-                raise InterfaceError('сервер требует MD5 аутентификацию пароля, но пароля нет ')
-
-            md5_user_password = md5(self._encoded_password +
-                                    self._encoded_user).hexdigest().encode('ascii')
-
-            pwd = b'md5' + md5(md5_user_password + salt).hexdigest().encode('ascii')
-
-            self._write_message(dbm.PASSWORD, pwd + NULL_BYTE)
-            await self._writer.drain()
+        # на основании типа выбираем обработчик из словаря и запускаем связанный метод
+        await self._authenticate_handlers[auth_type](data)
 
     async def _handle_PARAMETER_STATUS(self, data):
         pass
 
     async def _handle_BACKEND_KEY_DATA(self, data):
         pass
+
+    async def _handle_CONNECTION_READY(self, data, **kwargs):
+        self._transaction_status = data
+
+    async def _handle_ROW_DESCRIPTION(self, data, query_context: QueryContext):
+        """ Функция-обработчика метаданных результата запроса """
+        packer_h = CPack(CharType.h)
+        packer_ihihih = CPack(CharType.ihihih)
+
+        columns_count = packer_h.unpack(data)[0]
+        idx = 2
+        columns = []
+        type_convert_functions: list[Callable] = []
+
+        for _ in range(columns_count):
+            name = data[idx:data.find(NULL_BYTE, idx)]
+            idx += len(name) + 1
+            field = dict(
+                zip(
+                    (
+                        'table_oid',
+                        'column_attrnum',
+                        'type_oid',
+                        'type_size',
+                        'type_modifier',
+                        'format',
+                    ),
+                    packer_ihihih.unpack(data, idx),
+                ))
+
+            field['name'] = name.decode(self._client_encoding)    # type: ignore
+
+            idx += 18
+
+            columns.append(field)
+
+            oid = field['type_oid']
+            convert_func = self._postgres_types[oid]
+            type_convert_functions.append(convert_func)
+
+        query_context.columns = columns
+        query_context.type_converters = type_convert_functions
+
+        if columns and query_context.rows is None:
+            query_context.rows = []
+
+    def _send_command_QUERY(self, stmt: str):
+        """ запись запроса в поток (сокет) """
+
+        self._write_message(dbm.QUERY, stmt.encode(self._client_encoding) + NULL_BYTE)
+
+    async def _handle_DATA_ROW(self, data, query_context: QueryContext):
+        logger.debug(data)
+
+        idx = 2
+        row = []
+        packer = CPack(CharType.i)
+
+        for type_converter in query_context.type_converters:
+            value_len = packer.unpack(data, idx)[0]
+            idx += 4
+            if value_len == -1:
+                value = None
+            else:
+
+                value = type_converter(
+                    str(data[idx:idx + value_len], encoding=self._client_encoding))
+                idx += value_len
+            row.append(value)
+
+        query_context.rows.append(row)    # type: ignore
+
+    async def _handle_query_result_messages(self, **kwarg):
+        await self.__run_while_not_command_in((dbm.CONNECTION_READY, ), **kwarg)
+
+    async def _handle_command_COMPLITE(self, data, query_context: QueryContext):
+        if self._transaction_status == dbm.IN_FAILED_TRANSACTION and query_context.stmt:
+            sql = query_context.stmt.split()[0].rstrip(';').upper()
+            if sql != 'ROLLBACK':
+                raise InterfaceError('Не верный блок транзакций')
+
+        values = data[:-1].split(b' ')
+        try:
+            rows_count = int(values[-1])
+            if query_context.rows_count == -1:
+                query_context.rows_count = rows_count
+            else:
+                query_context.rows_count += rows_count
+        except ValueError:
+            pass
+
+    async def __aenter__(self):
+        await asyncio.sleep(0)
+        return self
+
+    async def __exit__(self):
+        await self.close()

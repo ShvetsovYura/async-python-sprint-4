@@ -23,4 +23,8 @@ mccabe==0.7.0
 mr-proper==0.0.7
 pycodestyle==2.9.1
 pyflakes==2.5.0
+
+
+pytest
+pytest-cov
 yapf==0.32.0

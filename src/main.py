@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import logging.config
 from datetime import datetime, timedelta, timezone
@@ -22,7 +21,7 @@ async def main():
                     db_name='dev_db',
                     user='app',
                     password='123qwe',
-                    application_name='hoho')
+                    application_name='link-cutter')
 
     await con.connect()
     await con.run_query("START TRANSACTION")    # noqa Q0000
@@ -47,10 +46,8 @@ if __name__ == '__main__':
         cfg_ = yaml.safe_load(stream)
         logging.config.dictConfig(cfg_.get('logging'))
 
-    asyncio.run(main())
-
     # # asyncio.run(start_webserver()) # noqa E800
 
-    # api = create_api()    # noqa F841 # noqa E800
-    # cfg = WebapiConfig(**read_config().get('webapi')) # noqa E800
-    # uvicorn.run('core.api:web_api', port=cfg.port) # noqa E800
+    api = create_api()    # noqa F841 # noqa E800
+    cfg = WebapiConfig(**read_config().get('webapi'))    # noqa E800
+    uvicorn.run('core.api:web_api', port=cfg.port)    # noqa E800

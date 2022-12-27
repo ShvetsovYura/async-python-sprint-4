@@ -1,11 +1,25 @@
 from fastapi import APIRouter, Response, status
 
+from core.utils import read_config
+from db.source import DbSource
+from models.config_models import DbConfig
+from services.db import DbService
+
 router = APIRouter()
+
+# хотелось бы конечно все это заветнуть в класс
+# c роутами, чтобы инкапсулировать логику,
+# но незнаю как в FastAPI делать классы для endpoint'ов
+
+db_source = DbSource(db_config=DbConfig(**read_config().get('db')))
+db_srv = DbService(db_source=db_source)
 
 
 @router.get('/ping')
 async def get_health_db():
-    pass
+    result = await db_srv.check_db()
+
+    return {'db_connection': result}
 
 
 @router.post('/')

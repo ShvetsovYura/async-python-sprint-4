@@ -7,3 +7,10 @@ webapi:
     methods: ["GET", "POST", "OPTIONS"]
     origins: ["*"]
     headers: ["*"]
+db:
+  host: "localhost"
+  port: 5432
+  db: "dev_db"
+  schema: "links"
+  user: "app"
+  password: "123qwe"

@@ -26,7 +26,6 @@ class WebapiConfig:
 
     def __init__(
         self,
-        access_token: str,
         cors: Any,
         port: int = 8080,
         prefix: str = '/api/v1',
@@ -34,4 +33,3 @@ class WebapiConfig:
         self.cors = WebapiCorsConfig(**cors)
         self.port = port
         self.prefix = prefix
-        self.access_token = access_token

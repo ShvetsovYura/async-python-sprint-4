@@ -15,8 +15,15 @@ from models.config_models import WebapiConfig
 logger = logging.getLogger(__name__)
 
 config = read_config()
-
+cfg = WebapiConfig(**config.get('webapi'))
 app: FastAPI = FastAPI()
+
+app.include_router(routes.router, prefix=cfg.prefix)
+app.add_middleware(cors.CORSMiddleware,
+                   allow_credentials=cfg.cors.credentials,
+                   allow_headers=cfg.cors.headers,
+                   allow_methods=cfg.cors.methdods,
+                   allow_origins=cfg.cors.origins)
 
 
 @app.middleware('http')
@@ -36,15 +43,5 @@ if __name__ == '__main__':
     with open(Path.cwd() / 'src/log-config.yml', 'r') as stream:
         cfg_ = yaml.safe_load(stream)
         logging.config.dictConfig(cfg_.get('logging'))
-
-    cfg = WebapiConfig(**config.get('webapi'))
-
-    app.add_middleware(cors.CORSMiddleware,
-                       allow_credentials=cfg.cors.credentials,
-                       allow_headers=cfg.cors.headers,
-                       allow_methods=cfg.cors.methdods,
-                       allow_origins=cfg.cors.origins)
-
-    app.include_router(routes.router, prefix=cfg.prefix)    # type: ignore
 
     uvicorn.run('main:app', port=cfg.port)    # noqa E800

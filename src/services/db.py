@@ -34,7 +34,7 @@ class DbService:
         return result
 
     async def get_original_by_short(self, url_id: str):
-        stmt = f'SELECT original_url, active from {self.schema}.links where url_id=$1'
+        stmt = f'SELECT url_id, original_url, active from {self.schema}.links where url_id=$1'
         return await self._execute(stmt, url_id)
 
     async def deactivate_link(self, url_id: str):
@@ -43,6 +43,22 @@ class DbService:
         result = await self._execute(stmt, url_id)
         await self._execute('COMMIT')
         return result
+
+    async def add_statistic(self, url_id: str, info: str):
+        stmt = f'INSERT INTO {self.schema}.stats(url_id, info) values($1,$2)'
+        await self._execute('START TRANSACTION')
+        result = await self._execute(stmt, url_id, info)
+        await self._execute('COMMIT')
+
+        return result
+
+    async def get_stats_count_by_id(self, url_id: str):
+        stmt = f'SELECT count(*) from {self.schema}.stats where url_id=$1 '
+        return await self._execute(stmt, url_id)
+
+    async def get_stats_by_url_id(self, url_id: str, offset: int = 0, limit: int = 10):
+        stmt = f'SELECT info, happened from {self.schema}.stats where url_id=$1 limit $2 offset $3'
+        return await self._execute(stmt, url_id, limit, offset)
 
     async def _execute(self, sql: str, *args):
         connection_ = await self._db_source.acquire()

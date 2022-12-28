@@ -1,12 +1,15 @@
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from core.utils import read_config
 from db.pg_source import PgDbSource
 from models.config_models import DbConfig
 from models.request_models import CreateShortLinkModel
 from services.db import DbService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -37,14 +40,25 @@ async def create_short_link(
 
 
 @router.get('/{url_id}', status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-async def redirect_by_short_link(url_id: str, response: Response):
+async def redirect_by_short_link(    # noqa CCR001
+        url_id: str, response: Response, request: Request):
     result = await db_srv.get_original_by_short(url_id)
 
     if result and isinstance(result, list):
+        try:
+
+            # не надо падать, когда вдруг не можем записать статистику
+            client = request.client
+            await db_srv.add_statistic(url_id=url_id,
+                                       info=f'host: {client.host if client else "" }')
+        except Exception as e:    # noqa B902
+            logger.exception(e)
+
         if not result[0]['active']:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail='Link deactivated')
         original_link = result[0]['original_url']
         response.headers['Location'] = original_link
+        return {'action': 'redirected'}
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Link not found')
 
@@ -66,15 +80,18 @@ async def get_status(
         skip: int = Query(0, alias='offset'),    # noqa B008
         limit: int = Query(10, alias='max-result')    # noqa B008
 ):
+    result_count = await db_srv.get_stats_count_by_id(url_id)
+    answer = {}
+    if result_count and isinstance(result_count, list):
+        answer['url_id'] = url_id
+        answer['count'] = result_count[0]['count']
 
-    return {'ok': 'query'}
+    if full_info:
+        add_info = await db_srv.get_stats_by_url_id(url_id=url_id, limit=limit, offset=skip)
+        answer['add_info'] = add_info
+    return answer
 
 
 @router.get('/health')
 async def health():
     return {'status': 'up'}
-
-
-@router.get('/redirect', status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-async def retirect_to_url(response: Response):
-    response.headers['Location'] = 'https://ya.ru'

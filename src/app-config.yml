@@ -1,0 +1,18 @@
+webapi:
+  port: 8080
+  prefix: "/api/v1"
+  cors:
+    credentials: true
+    methods: ["GET", "POST", "OPTIONS"]
+    origins: ["*"]
+    headers: ["*"]
+db:
+  host: "localhost"
+  port: 5432
+  db: "dev_db"
+  schema: "links"
+  user: "app"
+  password: "123qwe"
+
+subnet_blacklist:
+  - "192.168.0.1"

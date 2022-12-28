@@ -24,18 +24,25 @@ class DbService:
             self._logger.info('не удалось подклюиться к БД')
             return False
 
-    async def create_link(self, url_id: str, short_url: str, original_url: str):
+    async def create_link(self, url_id: str, original_url: str):
 
-        stmt = f'INSERT INTO {self.schema}.links(url_id, short_url, original_url) values($1,$2,$3)'
+        stmt = f'INSERT INTO {self.schema}.links(url_id, original_url) values($1,$2)'
         await self._execute('START TRANSACTION')
-        result = await self._execute(stmt, url_id, short_url, original_url)
+        result = await self._execute(stmt, url_id, original_url)
         await self._execute('COMMIT')
 
         return result
 
     async def get_original_by_short(self, url_id: str):
-        stmt = f'SELECT original_url from {self.schema}.links where url_id=$1'
+        stmt = f'SELECT original_url, active from {self.schema}.links where url_id=$1'
         return await self._execute(stmt, url_id)
+
+    async def deactivate_link(self, url_id: str):
+        stmt = f'UPDATE {self.schema}.links SET active=0 where url_id=$1'
+        await self._execute('START TRANSACTION')
+        result = await self._execute(stmt, url_id)
+        await self._execute('COMMIT')
+        return result
 
     async def _execute(self, sql: str, *args):
         connection_ = await self._db_source.acquire()

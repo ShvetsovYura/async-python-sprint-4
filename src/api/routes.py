@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from core.utils import read_config
 from db.pg_source import PgDbSource
@@ -33,9 +33,7 @@ async def create_short_link(
         link: CreateShortLinkModel,
         get_url_id: str = Depends(get_random_uuid)    # noqa B008
 ):
-    await db_srv.create_link(url_id=get_url_id,
-                             short_url=get_url_id,
-                             original_url=link.original_link)
+    await db_srv.create_link(url_id=get_url_id, original_url=link.original_link)
 
 
 @router.get('/{url_id}', status_code=status.HTTP_307_TEMPORARY_REDIRECT)
@@ -43,15 +41,33 @@ async def redirect_by_short_link(url_id: str, response: Response):
     result = await db_srv.get_original_by_short(url_id)
 
     if result and isinstance(result, list):
+        if not result[0]['active']:
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail='Link deactivated')
         original_link = result[0]['original_url']
         response.headers['Location'] = original_link
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Link not found')
 
 
-# @router.get('/<url_id>/status?[full-info]&&[max-result=10]&&[offset=0]')
-# async def get_status():
-#     pass
+@router.delete('/{url_id}', status_code=status.HTTP_200_OK)
+async def deactivate_link(url_id):
+    result = await db_srv.deactivate_link(url_id)
+
+    if result and isinstance(result, int):
+        return {'updated': result}
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Link not found')
+
+
+@router.get('/{url_id}/status')
+async def get_status(
+        url_id: str,
+        full_info: bool = Query(False, alias='full-info'),    # noqa B008
+        skip: int = Query(0, alias='offset'),    # noqa B008
+        limit: int = Query(10, alias='max-result')    # noqa B008
+):
+
+    return {'ok': 'query'}
 
 
 @router.get('/health')

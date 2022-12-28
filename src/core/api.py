@@ -19,13 +19,3 @@ def create_api():
     web_api.include_router(routes.router, prefix=cfg.prefix)    # type: ignore
 
     return web_api
-
-
-@web_api.on_event('startup')
-async def startup_event():
-    pass
-
-
-@web_api.on_event('shutdown')
-async def shutdonw_event():
-    pass

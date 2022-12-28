@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from core.utils import read_config
-from db.source import DbSource
+from db.pg_source import PgDbSource
 from models.config_models import DbConfig
 from models.request_models import CreateShortLinkModel
 from services.db import DbService
@@ -14,7 +14,7 @@ router = APIRouter()
 # c роутами, чтобы инкапсулировать логику,
 # но незнаю как в FastAPI делать классы для endpoint'ов
 
-db_source = DbSource(db_config=DbConfig(**read_config().get('db')))
+db_source = PgDbSource(db_config=DbConfig(**read_config().get('db')))
 db_srv = DbService(db_source=db_source)
 
 

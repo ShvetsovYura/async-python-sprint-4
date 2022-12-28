@@ -1,11 +1,11 @@
 import logging
 
-from db.source import DbSource
+from core.abstract_source import AbstractSource
 
 
 class DbService:
 
-    def __init__(self, db_source: DbSource):
+    def __init__(self, db_source: AbstractSource):
         self._db_source = db_source
         self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
 

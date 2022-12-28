@@ -8,6 +8,7 @@ from struct import Struct
 from typing import Callable, Optional, Union
 
 import db.db_messages as dbm
+from db.abstract_db_connect import AbstractDbConnect
 from db.pg_converters import PG_TYPES, python_types_convert_to_pg_params, string_in
 from db.query_context import QueryContext
 
@@ -49,7 +50,13 @@ class CPack:
         return self._c_struct.unpack_from(data)
 
 
-class DbConnect:
+packer_h = CPack(CharType.h)
+packer_i = CPack(CharType.i)
+packer_ihihih = CPack(CharType.ihihih)
+packer_cccc = CPack(CharType.cccc)
+
+
+class PgCoreConnect(AbstractDbConnect):
     # https://www.postgresql.org/docs/current/protocol-message-formats.html
     def __init__(    # noqa: CFQ002
         self,
@@ -251,7 +258,7 @@ class DbConnect:
         user_password = self._encoded_password + self._encoded_user
         md5_user_password = md5(user_password).hexdigest().encode('ascii')
 
-        pwd = b'md5' + md5(md5_user_password + salt).hexdigest().encode('ascii')
+        pwd = b'md5' + md5(string=md5_user_password + salt).hexdigest().encode('ascii')
 
         self._write_message(dbm.PASSWORD, pwd + NULL_BYTE)
         await self._writer.drain()
@@ -274,12 +281,6 @@ class DbConnect:
 
         # на основании типа выбираем обработчик из словаря и запускаем связанный метод
         await self._authenticate_handlers[auth_type](data)
-
-    async def _handle_PARAMETER_STATUS(self, data):
-        pass
-
-    async def _handle_BACKEND_KEY_DATA(self, data):
-        pass
 
     async def _handle_CONNECTION_READY(self, data, **kwargs):
         self._transaction_status = data
@@ -404,9 +405,6 @@ class DbConnect:
         self._write_message(dbm.BIND, retval)
         self._writer.write(dbm.FLUSH + packer_i.pack(len(b'') + 4) + b'')
 
-    async def _handle_PARSE_COMPLETE(self, data, **kwarg):
-        pass
-
     def _send_command_DESCRIBE_STATEMENT(self, stmt_name: bytes):
         packer_i = CPack(CharType.i)
 
@@ -414,7 +412,7 @@ class DbConnect:
         self._writer.write(dbm.FLUSH + packer_i.pack(len(b'') + 4) + b'')
 
     def _send_command_EXECUTE(self):
-        """https://www.postgresql.org/docs/current/protocol-message-formats.html"""
+        """ https://www.postgresql.org/docs/current/protocol-message-formats.html """
 
         packer_i = CPack(CharType.i)
 
@@ -422,13 +420,22 @@ class DbConnect:
         self._writer.write(dbm.EXECUTE + data_ + NULL_BYTE + packer_i.pack(0))
         self._writer.write(dbm.FLUSH + packer_i.pack(len(b'') + 4) + b'')
 
-    async def _handle_PARAMETER_DESCRIPTION(self, data, **kwarg):
+    async def _handle_PARAMETER_DESCRIPTION(self, *args, **kwarg):
         pass
 
-    async def _handle_BIND_COMPLETE(self, data, **kwarg):
+    async def _handle_BIND_COMPLETE(self, *args, **kwarg):
         pass
 
     async def _handle_NO_DATA(self, *args, **kwargs):
+        pass
+
+    async def _handle_PARSE_COMPLETE(self, *args, **kwarg):
+        pass
+
+    async def _handle_PARAMETER_STATUS(self, *args):
+        pass
+
+    async def _handle_BACKEND_KEY_DATA(self, *args):
         pass
 
     async def __aenter__(self):

@@ -56,6 +56,10 @@
 
     $ pre-commit install
 
+Запуск тестов:
+
+    $ py.test --cov
+
 <details>
 <summary> Проектное задание четвертого спринта </summary>
 

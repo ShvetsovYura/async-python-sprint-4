@@ -9,11 +9,11 @@ from db.pg_source import PgDbSource
 from models.config_models import DbConfig
 from models.request_models import CreateShortLinkModel
 from models.response_models import CreatedLinkModel
-from services.db import DbService
+from services.db import DbResult, DbService
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router: APIRouter = APIRouter()
 
 db_source = PgDbSource(db_config=DbConfig(**read_config().get('db')))
 db_srv = DbService(db_source=db_source)
@@ -29,11 +29,11 @@ async def get_health_db():
     Проверка, доступна ли БД для работы
     """
 
-    result = await db_srv.check_db()
+    result: bool = await db_srv.check_db()
     return {'db_connection': result}
 
 
-@router.post('/',
+@router.post(path='/',
              status_code=status.HTTP_201_CREATED,
              response_model=CreatedLinkModel,
              summary='Создание короткой ссылки')
@@ -47,10 +47,10 @@ async def create_short_link(
     """
 
     await db_srv.create_link(url_id=get_url_id, original_url=link.original_link)
-    return CreatedLinkModel(url_id=get_url_id, link=str(request.url._url))
+    return CreatedLinkModel(url_id=get_url_id, link=f'{str(request.url)}/{get_url_id}')
 
 
-@router.get('/{url_id}',
+@router.get(path='/{url_id}',
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
             summary='Переход к оригинальой ссылке по идентификатору короткой')
 async def redirect_by_short_link(    # noqa CCR001
@@ -61,11 +61,10 @@ async def redirect_by_short_link(    # noqa CCR001
     В противном случае будет ошибка 404
     """
 
-    result = await db_srv.get_original_by_short(url_id)
+    result: DbResult = await db_srv.get_original_by_short(url_id)
 
     if result and isinstance(result, list):
         try:
-
             # не надо падать, когда вдруг не можем записать статистику
             client = request.client
             await db_srv.add_statistic(url_id=url_id,
@@ -75,7 +74,8 @@ async def redirect_by_short_link(    # noqa CCR001
 
         if not result[0]['active']:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail='Link deactivated')
-        original_link = result[0]['original_url']
+
+        original_link: str = result[0]['original_url']
         response.headers['Location'] = original_link
         return {'action': 'redirected'}
 
@@ -85,13 +85,13 @@ async def redirect_by_short_link(    # noqa CCR001
 @router.delete('/{url_id}',
                status_code=status.HTTP_200_OK,
                summary='Удаление сопоставления кортокой и оригинальной ссылок')
-async def deactivate_link(url_id):
+async def deactivate_link(url_id: str):
     """
     Деактивируется кортокая ссылка и при переходе по ней в дальнейшем
     не будет происходить редирект на оригинальную ссылку
     """
 
-    result = await db_srv.deactivate_link(url_id)
+    result: DbResult = await db_srv.deactivate_link(url_id)
 
     if result and isinstance(result, int):
         return {'updated': result}
@@ -107,23 +107,31 @@ async def get_status(
         alias='full-info',
         description='Показывать полную статиситку'),
     skip: int = Query(    # noqa B008 
-        default=0, alias='offset', description='Сколько записей пропустить'),
+        default=0,
+        alias='offset',
+        ge=0,
+        le=10e6,
+        description='Сколько записей пропустить'),
     limit: int = Query(    # noqa B008
         default=10,
         alias='max-result',
+        ge=0,
+        le=10e6,
         description='Сколько записей показывать при подробном отображении')):
     """
     Получение полной или общей статистики по переходам по коротким ссылкам
     """
 
-    result_count = await db_srv.get_stats_count_by_id(url_id)
+    result_count: DbResult = await db_srv.get_stats_count_by_id(url_id)
     answer = {}
     if result_count and isinstance(result_count, list):
         answer['url_id'] = url_id
         answer['count'] = result_count[0]['count']
 
     if full_info:
-        add_info = await db_srv.get_stats_by_url_id(url_id=url_id, limit=limit, offset=skip)
+        add_info: DbResult = await db_srv.get_stats_by_url_id(url_id=url_id,
+                                                              limit=limit,
+                                                              offset=skip)
         answer['add_info'] = add_info
     return answer
 

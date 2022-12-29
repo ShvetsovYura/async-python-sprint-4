@@ -53,17 +53,25 @@ if __name__ == '__main__':
 #  в проекте. Т.к. тут должно быть в структуре папок api/v1/routes
 # Result: Done! Изменил структуру
 
-# src/api/routes: 34
+# src/api/routes.py: 34
 # Swagger документация сервисов выглядит максимально куцей, давай добавим хотя бы description,
 # подробнее тут: https://fastapi.tiangolo.com/tutorial/path-operation-configuration/?h=description#summary-and-description # noqa E501
 # Result: Done! Добавил описания к endpoint'ам
 
-# src/api/routes: 39
+# src/api/routes.py: 39
 # Тут, кажется, будет логично вернуть пользователю созданную ссылку в теле ответа.
 # Result: Done! Добавил модель ответа CreatedLinkModel, где содержатся ссылки
 
-# src/api/router: 54
+# src/api/routes.py: 54
 # Крайне рекомендуется избегать использования такого "широкого" исключения.
 # Отличным вариантом будет создание какого-нибудь кастомного исключения и дальнейший перехват его.
 # https://docs.python.org/3/library/exceptions.html#exception-hierarchy
 # Result: Done! Ловлю кастомные ошибки
+
+# src/api/routes.py: 64
+# Тут как и везде, не нужно забывать об указании типов принимаемых параметров.
+# Result: Done! Добавил аннотаций
+
+# src/api/routes.py: 83
+# Эти параметры нужно валидировать
+# Result: Done! Добавил валидации

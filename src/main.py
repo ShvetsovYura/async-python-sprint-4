@@ -8,7 +8,7 @@ import yaml
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware import cors
 
-from api import routes
+from api.v1 import routes
 from core.utils import read_config
 from models.config_models import WebapiConfig
 
@@ -46,13 +46,14 @@ if __name__ == '__main__':
 
     uvicorn.run('main:app', port=cfg.port)    # noqa E800
 
-# ПРИВЕТ ДОРОГОЙ РЕВЬЮВЕР !!
+# ЗАМЕЧАНИЯ
 
-# Ты видишь мою реализацию проектоного задания
-# Я очень жду замечаний от тебя - особенно бэст практис =)
-# Прошу проверить работу с пристрастием ;)
+# src/api/routes.py: 18
+# И так хорошо :) Единственное, что нужно сделать - это версионирование ардесов эндпоинтов и папок
+#  в проекте. Т.к. тут должно быть в структуре папок api/v1/routes
+# Result: Done! Изменил структуру
 
-# Сейчас я пишу unit-тесты, но решил отправить работу,
-# чтобы за одно поправить замечания
-
-# Большое спасибо за твою работу!
+# src/api/routes: 34
+# Swagger документация сервисов выглядит максимально куцей, давай добавим хотя бы description,
+# подробнее тут: https://fastapi.tiangolo.com/tutorial/path-operation-configuration/?h=description#summary-and-description # noqa E501
+# Result: Добавил описания к endpoint'ам

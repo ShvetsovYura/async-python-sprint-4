@@ -33,7 +33,12 @@ async def get_health_db():
     return {'db_connection': result}
 
 
-@router.post(path='/',
+@router.get('/health', summary='Доступен web-сервис или нет')
+async def health():
+    return {'status': 'up'}
+
+
+@router.post('/',
              status_code=status.HTTP_201_CREATED,
              response_model=CreatedLinkModel,
              summary='Создание короткой ссылки')
@@ -50,7 +55,7 @@ async def create_short_link(
     return CreatedLinkModel(url_id=get_url_id, link=f'{str(request.url)}/{get_url_id}')
 
 
-@router.get(path='/{url_id}',
+@router.get('/{url_id}',
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
             summary='Переход к оригинальой ссылке по идентификатору короткой')
 async def redirect_by_short_link(    # noqa CCR001
@@ -134,8 +139,3 @@ async def get_status(
                                                               offset=skip)
         answer['add_info'] = add_info
     return answer
-
-
-@router.get('/health', summary='Доступен web-сервис или нет')
-async def health():
-    return {'status': 'up'}

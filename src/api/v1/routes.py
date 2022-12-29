@@ -4,9 +4,11 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from core.utils import read_config
+from db.pg_core_connect import CustomDbError
 from db.pg_source import PgDbSource
 from models.config_models import DbConfig
 from models.request_models import CreateShortLinkModel
+from models.response_models import CreatedLinkModel
 from services.db import DbService
 
 logger = logging.getLogger(__name__)
@@ -31,9 +33,13 @@ async def get_health_db():
     return {'db_connection': result}
 
 
-@router.post('/', status_code=status.HTTP_201_CREATED, summary='Создание короткой ссылки')
+@router.post('/',
+             status_code=status.HTTP_201_CREATED,
+             response_model=CreatedLinkModel,
+             summary='Создание короткой ссылки')
 async def create_short_link(
         link: CreateShortLinkModel,
+        request: Request,
         get_url_id: str = Depends(get_random_uuid)    # noqa B008
 ):
     """
@@ -41,6 +47,7 @@ async def create_short_link(
     """
 
     await db_srv.create_link(url_id=get_url_id, original_url=link.original_link)
+    return CreatedLinkModel(url_id=get_url_id, link=str(request.url._url))
 
 
 @router.get('/{url_id}',
@@ -63,7 +70,7 @@ async def redirect_by_short_link(    # noqa CCR001
             client = request.client
             await db_srv.add_statistic(url_id=url_id,
                                        info=f'host: {client.host if client else "" }')
-        except Exception as e:    # noqa B902
+        except CustomDbError as e:    # noqa B902
             logger.exception(e)
 
         if not result[0]['active']:

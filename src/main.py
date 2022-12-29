@@ -56,4 +56,14 @@ if __name__ == '__main__':
 # src/api/routes: 34
 # Swagger документация сервисов выглядит максимально куцей, давай добавим хотя бы description,
 # подробнее тут: https://fastapi.tiangolo.com/tutorial/path-operation-configuration/?h=description#summary-and-description # noqa E501
-# Result: Добавил описания к endpoint'ам
+# Result: Done! Добавил описания к endpoint'ам
+
+# src/api/routes: 39
+# Тут, кажется, будет логично вернуть пользователю созданную ссылку в теле ответа.
+# Result: Done! Добавил модель ответа CreatedLinkModel, где содержатся ссылки
+
+# src/api/router: 54
+# Крайне рекомендуется избегать использования такого "широкого" исключения.
+# Отличным вариантом будет создание какого-нибудь кастомного исключения и дальнейший перехват его.
+# https://docs.python.org/3/library/exceptions.html#exception-hierarchy
+# Result: Done! Ловлю кастомные ошибки

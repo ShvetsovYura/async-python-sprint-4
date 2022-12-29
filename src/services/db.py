@@ -1,5 +1,6 @@
 from core.abstract_source import AbstractSource
 from core.db_base import DbBase
+from db.pg_core_connect import CustomDbError
 
 
 class DbService(DbBase):
@@ -17,7 +18,7 @@ class DbService(DbBase):
             _ = await self._execute('select schema_name from information_schema.schemata')
             self._logger.info('подключение к БД успешно')
             return True
-        except Exception as e:    # noqa B902
+        except CustomDbError as e:    # noqa B902
             self._logger.error(e)
             self._logger.info('не удалось подклюиться к БД')
             return False

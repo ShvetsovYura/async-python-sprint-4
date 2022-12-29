@@ -53,14 +53,14 @@ async def create_short_link(
     """
 
     await db_srv.create_link(url_id=get_url_id, original_url=link.original_link)
-    return CreatedLinkModel(url_id=get_url_id, link=f'{str(request.url)}/{get_url_id}')
+    return CreatedLinkModel(url_id=get_url_id, link=f'{str(request.url)}{get_url_id}')
 
 
 @router.get('/{url_id}',
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
             summary='Переход к оригинальой ссылке по идентификатору короткой')
 async def redirect_by_short_link(    # noqa CCR001
-        url_id: str, response: Response, request: Request):
+        url_id: str, request: Request):
     """
     Клиент редиректится на оригинальную ссылку при перехаоде на короткую,
     если соответствие найдено в БД.
@@ -82,10 +82,9 @@ async def redirect_by_short_link(    # noqa CCR001
             raise HTTPException(status_code=status.HTTP_410_GONE, detail='Link deactivated')
 
         original_link: str = result[0]['original_url']
-        response.headers['Location'] = original_link
-        return {'action': 'redirected'}
-
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Link not found')
+        return Response(status_code=307, headers={'Location': original_link})
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Link not found')
 
 
 @router.delete('/{url_id}',
@@ -113,16 +112,11 @@ async def get_status(
         alias='full-info',
         description='Показывать полную статиситку'),
     skip: int = Query(    # noqa B008 
-        default=0,
-        alias='offset',
-        ge=0,
-        le=10e6,
-        description='Сколько записей пропустить'),
+        default=0, alias='offset', ge=0, description='Сколько записей пропустить'),
     limit: int = Query(    # noqa B008
         default=10,
         alias='max-result',
         ge=0,
-        le=10e6,
         description='Сколько записей показывать при подробном отображении')):
     """
     Получение полной или общей статистики по переходам по коротким ссылкам

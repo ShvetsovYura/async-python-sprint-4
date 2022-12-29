@@ -28,7 +28,7 @@ class CharType(Enum):
     bh = 'bh'
 
 
-class CustomError(Exception):
+class CustomDbError(Exception):
     pass
 
 
@@ -236,11 +236,11 @@ class PgCoreConnect(AbstractDbConnect):
             self._writer.write(data)
         except ValueError as e:
             if str(e) == 'write to closed file':
-                raise CustomError('connection is closed')
+                raise CustomDbError('connection is closed')
             else:
                 raise e
         except AttributeError:
-            raise CustomError('connection is closed')
+            raise CustomDbError('connection is closed')
 
     async def _authenticate_nope(self, data):
         pass
@@ -253,7 +253,7 @@ class PgCoreConnect(AbstractDbConnect):
         salt = b''.join(unpacked_data)
 
         if self._password is None:
-            raise CustomError('сервер требует MD5 аутентификацию пароля, но пароля нет, бро ')
+            raise CustomDbError('сервер требует MD5 аутентификацию пароля, но пароля нет, бро ')
 
         user_password = self._encoded_password + self._encoded_user
         md5_user_password = md5(user_password).hexdigest().encode('ascii')
@@ -267,7 +267,7 @@ class PgCoreConnect(AbstractDbConnect):
         """ Аутентификация по паролю в открытом текстовом виде """
 
         if self._password is None:
-            raise CustomError('Тербуется пароль, но отсутствует')
+            raise CustomDbError('Тербуется пароль, но отсутствует')
 
         self._write_message(dbm.PASSWORD, self._encoded_password + NULL_BYTE)
         await self._writer.drain()
@@ -360,7 +360,7 @@ class PgCoreConnect(AbstractDbConnect):
         if self._transaction_status == dbm.IN_FAILED_TRANSACTION and query_context.stmt:
             sql = query_context.stmt.split()[0].rstrip(';').upper()
             if sql != 'ROLLBACK':
-                raise CustomError('Не верный блок транзакций')
+                raise CustomDbError('Не верный блок транзакций')
 
         values = data[:-1].split(b' ')
         try:

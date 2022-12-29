@@ -1,5 +1,5 @@
-from pydantic import BaseModel
+from models.base_json_model import BaseOrjsonModel
 
 
-class CreateShortLinkModel(BaseModel):
+class CreateShortLinkModel(BaseOrjsonModel):
     original_link: str

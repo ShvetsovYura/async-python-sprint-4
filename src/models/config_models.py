@@ -17,7 +17,7 @@ class WebapiCorsConfig:
     def __init__(self, methods: list[str], origins: list[str], headers: list[str],
                  credentials: bool) -> None:
         self.credentials = credentials
-        self.methdods = methods
+        self.methods = methods
         self.origins = origins
         self.headers = headers
 

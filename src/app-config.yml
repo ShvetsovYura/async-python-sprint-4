@@ -7,9 +7,9 @@ webapi:
     origins: ["*"]
     headers: ["*"]
 db:
-  host: "localhost"
+  host: "postgres"
   port: 5432
-  db: "dev_db"
+  db: "cutter_db"
   schema: "links"
   user: "app"
   password: "123qwe"

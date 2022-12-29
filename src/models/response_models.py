@@ -1,6 +1,6 @@
-from pydantic import BaseModel
+from models.base_json_model import BaseOrjsonModel
 
 
-class CreatedLinkModel(BaseModel):
+class CreatedLinkModel(BaseOrjsonModel):
     url_id: str
     link: str

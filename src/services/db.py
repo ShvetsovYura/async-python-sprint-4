@@ -1,19 +1,11 @@
-import logging
-from typing import Any, TypeVar, Union
-
 from core.abstract_source import AbstractSource
-
-# чета я намутрил с аннотациями, подсвечивается как-то странно в роутерах
-DbResponse = TypeVar('DbResponse', list[dict[str, Any]], int)
-
-DbResult = Union[DbResponse, None]
+from core.db_base import DbBase
 
 
-class DbService:
+class DbService(DbBase):
 
     def __init__(self, db_source: AbstractSource):
-        self._db_source = db_source
-        self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
+        super().__init__(db_source=db_source)
 
     @property
     def schema(self):
@@ -65,13 +57,3 @@ class DbService:
     async def get_stats_by_url_id(self, url_id: str, offset: int = 0, limit: int = 10):
         stmt = f'SELECT info, happened from {self.schema}.stats where url_id=$1 limit $2 offset $3'
         return await self._execute(stmt, url_id, limit, offset)
-
-    async def _execute(self, sql: str, *args) -> DbResult:
-        connection_ = await self._db_source.acquire()
-        result = await connection_.run_query(sql, *args)
-        if result.rows and result.columns:
-            keys = [col['name'] for col in result.columns]
-            return [dict(zip(keys, row)) for row in result.rows]
-
-        if result.rows_count and not result.columns:
-            return result.rows_count

@@ -22,7 +22,7 @@ app.include_router(router, prefix=cfg.prefix)
 app.add_middleware(cors.CORSMiddleware,
                    allow_credentials=cfg.cors.credentials,
                    allow_headers=cfg.cors.headers,
-                   allow_methods=cfg.cors.methdods,
+                   allow_methods=cfg.cors.methods,
                    allow_origins=cfg.cors.origins)
 
 
@@ -50,6 +50,8 @@ if __name__ == '__main__':
 
 # ЗАМЕЧАНИЯ
 # Сделал контенеризацию (docker-compose)
+
+# В следующем спринте применю Settings из pydantic =)
 
 # src/services/db.py: 29
 # Мы всегда расчитываем, на то, что проект будет развиваться.

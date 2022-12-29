@@ -3,13 +3,14 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
+from core.db_base import DbResult
 from core.utils import read_config
 from db.pg_core_connect import CustomDbError
 from db.pg_source import PgDbSource
 from models.config_models import DbConfig
 from models.request_models import CreateShortLinkModel
 from models.response_models import CreatedLinkModel
-from services.db import DbResult, DbService
+from services.db import DbService
 
 logger: logging.Logger = logging.getLogger(__name__)
 
